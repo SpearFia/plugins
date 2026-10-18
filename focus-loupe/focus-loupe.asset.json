@@ -1,0 +1,39 @@
+{
+  "$schema": "https://spearfia.dev/schemas/asset/v1.json",
+  "id": "spearfia/focus-loupe@0.1.0",
+  "name": "Focus Loupe",
+  "kind": "effect",
+  "summary": "Zoom, punch-in and circular or rectangular magnifier loupe, including a face-following picture-in-picture.",
+  "license": "MIT OR Apache-2.0",
+  "source": { "type": "git", "url": "https://github.com/spearfia/plugins", "author": "Caesar Fia" },
+  "hash": "sha256:3b22726b2b60a68301ecf5f2f2d9b9ba5b4394a4a1385101ddf6018648e66039",
+  "hosts": [
+    { "host": "resolve", "format": "dctl", "path": "dctl/FocusLoupe.dctl", "min_version": "21.0" },
+    { "host": "resolve", "format": "ofx", "path": "ofx/" },
+    { "host": "filmcraft", "format": "wgsl", "path": "wgsl/focus_loupe.wgsl" }
+  ],
+  "capabilities": [
+    {
+      "id": "pip.face-circle",
+      "summary": "Circular picture-in-picture loupe that follows the speaker's face.",
+      "inputs": {
+        "center": { "type": "point", "default": [0.5, 0.5] },
+        "radius": { "type": "float", "default": 0.15, "min": 0.02, "max": 0.5 },
+        "zoom": { "type": "float", "default": 1.5, "min": 1, "max": 6 },
+        "position": { "type": "enum", "default": "bottom-right", "options": ["bottom-left", "bottom-right", "top-left", "top-right"] }
+      },
+      "requires": ["face_track"],
+      "binds": { "center": "face_track.center", "radius": "face_track.radius" }
+    },
+    {
+      "id": "zoom.punch-in",
+      "summary": "Full-frame punch-in on a target point, eased in and out.",
+      "inputs": {
+        "target": { "type": "point", "default": [0.5, 0.5] },
+        "zoom": { "type": "float", "default": 2, "min": 1, "max": 6 },
+        "progress": { "type": "float", "default": 1, "min": 0, "max": 1 }
+      }
+    }
+  ],
+  "tags": ["zoom", "punch-in", "loupe", "pip", "facecam"]
+}

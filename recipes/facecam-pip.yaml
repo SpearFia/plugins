@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://spearfia.dev/schemas/recipe/v1.json
+id: spearfia/facecam-pip@0.1.0
+name: Facecam picture-in-picture
+summary: Screen or gameplay full frame with a face-following circular facecam.
+requires: [face_track]
+steps:
+  - use: spearfia/focus-loupe#pip.face-circle
+    target: facecam
+    with: { position: bottom-right, zoom: 1.4 }
