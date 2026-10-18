@@ -1,0 +1,41 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/checkout@v4
+        with:
+          repository: spearfia/spearfia-spec
+          path: .spec
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: .spec/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile --dir .spec
+      - name: Validate descriptors and recipes against spearfia-spec
+        run: |
+          node .spec/scripts/check.mjs asset */*.asset.json
+          node .spec/scripts/check.mjs recipe recipes/*.yaml
+      - uses: DavidAnson/markdownlint-cli2-action@v19
+        with:
+          globs: |
+            **/*.md
+            #.spec
+            #**/node_modules
+  ofx:
+    # Stubbed: enable once focus-loupe/ofx has sources and the OpenFX SDK is fetched here.
+    if: false
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S focus-loupe/ofx -B build/ofx
+      - run: cmake --build build/ofx --config Release

@@ -1,0 +1,21 @@
+# Builds
+build/
+out/
+*.ofx.bundle/
+node_modules/
+.spec/
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Media: never committed (golden images in test-harness/golden go through LFS)
+*.mp4
+*.mov
+*.mkv
+*.braw
+*.wav
+*.mp3
+*.drp

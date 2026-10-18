@@ -1,0 +1,270 @@
+// Focus Loupe DCTL v1.0.1  -  real-time zoom / punch-in / loupe magnifier for DaVinci Resolve
+// Use on the Edit page: Effects Library > OpenFX > Filters > ResolveFX Color > DCTL, then pick "FocusLoupe".
+// Animate it by keyframing "Zoom Progress" (0 = off, 1 = fully zoomed). Everything runs in one GPU pass.
+// Coordinates: Target X 0 = left, 1 = right; Target Y 0 = bottom, 1 = top.
+
+// --- ANIMATION & PROGRESS ---
+DEFINE_UI_PARAMS(progress, Zoom Progress, DCTLUI_SLIDER_FLOAT, 1.0, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(ease, Ease Curve, DCTLUI_COMBO_BOX, 1, { EASE_LINEAR, EASE_SMOOTH, EASE_SMOOTHER, EASE_PUNCH }, { Linear, Smooth, Smoother, Punch })
+DEFINE_UI_PARAMS(loupeAnim, Loupe Entrance, DCTLUI_COMBO_BOX, 0, { ANIM_GROW, ANIM_FADE, ANIM_NONE }, { Grow, Fade, Pop })
+
+// --- ZOOM & TARGET ---
+DEFINE_UI_PARAMS(shape, Loupe Shape, DCTLUI_COMBO_BOX, 1, { SHAPE_FULL, SHAPE_CIRCLE, SHAPE_RECT }, { Full Frame Zoom, Circle Loupe, Rectangle Loupe })
+DEFINE_UI_PARAMS(zoom, Zoom Amount, DCTLUI_SLIDER_FLOAT, 2.0, 1.0, 6.0, 0.01)
+DEFINE_UI_PARAMS(targetX, Target X, DCTLUI_SLIDER_FLOAT, 0.5, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(targetY, Target Y, DCTLUI_SLIDER_FLOAT, 0.5, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(panToCenter, Pan Target To Center, DCTLUI_COMBO_BOX, 0, { PAN_OFF, PAN_ON }, { Off, On })
+DEFINE_UI_PARAMS(rotation, Rotation, DCTLUI_SLIDER_FLOAT, 0.0, -45.0, 45.0, 0.1)
+DEFINE_UI_PARAMS(skew, Skew, DCTLUI_SLIDER_FLOAT, 0.0, -0.3, 0.3, 0.001)
+DEFINE_UI_PARAMS(sharpen, Sharpen Zoomed Image, DCTLUI_SLIDER_FLOAT, 0.0, 0.0, 2.0, 0.01)
+
+// --- LOUPE GEOMETRY ---
+DEFINE_UI_PARAMS(loupeSize, Loupe Size, DCTLUI_SLIDER_FLOAT, 0.3, 0.02, 1.0, 0.001)
+DEFINE_UI_PARAMS(rectHeight, Rectangle Height, DCTLUI_SLIDER_FLOAT, 0.3, 0.02, 1.0, 0.001)
+DEFINE_UI_PARAMS(roundness, Rectangle Roundness, DCTLUI_SLIDER_FLOAT, 0.15, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(loupeAngle, Loupe Angle, DCTLUI_SLIDER_FLOAT, 0.0, -180.0, 180.0, 0.1)
+DEFINE_UI_PARAMS(softness, Edge Softness, DCTLUI_SLIDER_FLOAT, 0.0005, 0.0, 0.05, 0.0001)
+
+// --- OUTLINE ---
+DEFINE_UI_PARAMS(outlineOn, Outline, DCTLUI_COMBO_BOX, 1, { OUTLINE_OFF, OUTLINE_ON }, { Off, On })
+DEFINE_UI_PARAMS(borderWidth, Outline Width, DCTLUI_SLIDER_FLOAT, 0.0025, 0.0, 0.02, 0.0001)
+DEFINE_UI_PARAMS(borderR, Outline Red, DCTLUI_SLIDER_FLOAT, 0.2, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(borderG, Outline Green, DCTLUI_SLIDER_FLOAT, 0.85, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(borderB, Outline Blue, DCTLUI_SLIDER_FLOAT, 1.0, 0.0, 1.0, 0.001)
+
+// --- GLASS & SHADOW ---
+DEFINE_UI_PARAMS(glassOn, Loupe Glass, DCTLUI_COMBO_BOX, 0, { GLASS_OFF, GLASS_ON }, { Off, On })
+DEFINE_UI_PARAMS(glassDistortion, Glass Distortion, DCTLUI_SLIDER_FLOAT, 0.25, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(glassBrightness, Glass Brightness, DCTLUI_SLIDER_FLOAT, 0.15, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(innerShadow, Inner Shadow, DCTLUI_SLIDER_FLOAT, 0.3, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(outerShadow, Drop Shadow, DCTLUI_SLIDER_FLOAT, 0.4, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(shadowDistance, Drop Shadow Distance, DCTLUI_SLIDER_FLOAT, 0.01, 0.0, 0.05, 0.0001)
+DEFINE_UI_PARAMS(shadowAngle, Drop Shadow Angle, DCTLUI_SLIDER_FLOAT, -90.0, -180.0, 180.0, 0.1)
+DEFINE_UI_PARAMS(shadowSoft, Drop Shadow Softness, DCTLUI_SLIDER_FLOAT, 0.015, 0.0, 0.08, 0.0001)
+
+// --- BACKGROUND ---
+DEFINE_UI_PARAMS(darkenOn, Darken Background, DCTLUI_COMBO_BOX, 0, { DARKEN_OFF, DARKEN_ON }, { Off, On })
+DEFINE_UI_PARAMS(darkenAmt, Darken Amount, DCTLUI_SLIDER_FLOAT, 0.35, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(desatOn, Desaturate Background, DCTLUI_COMBO_BOX, 0, { DESAT_OFF, DESAT_ON }, { Off, On })
+DEFINE_UI_PARAMS(desatAmt, Desaturate Amount, DCTLUI_SLIDER_FLOAT, 0.8, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(blurOn, Blur Background, DCTLUI_COMBO_BOX, 0, { BLUR_OFF, BLUR_ON }, { Off, On })
+DEFINE_UI_PARAMS(blurAmt, Blur Amount, DCTLUI_SLIDER_FLOAT, 0.3, 0.0, 1.0, 0.001)
+DEFINE_UI_PARAMS(bgSkew, Background Skew, DCTLUI_SLIDER_FLOAT, 0.0, -0.3, 0.3, 0.001)
+DEFINE_UI_PARAMS(grainOn, Background Grain, DCTLUI_COMBO_BOX, 0, { GRAIN_OFF, GRAIN_ON }, { Off, On })
+DEFINE_UI_PARAMS(grainAmt, Grain Amount, DCTLUI_SLIDER_FLOAT, 0.08, 0.0, 0.5, 0.001)
+
+DEFINE_UI_TOOLTIP(Zoom Progress, "0 = no effect, 1 = fully zoomed. Keyframe 0 -> 1 -> 0 in the Inspector to zoom in and back out.")
+DEFINE_UI_TOOLTIP(Loupe Size, "Circle diameter / rectangle width, as a fraction of frame width.")
+DEFINE_UI_TOOLTIP(Rectangle Height, "Rectangle height as a fraction of frame height.")
+
+// ---------------------------------------------------------------------------------------------
+__DEVICE__ float smooth01(float e0, float e1, float x)
+{
+    float t = _saturatef((x - e0) / _fmaxf(e1 - e0, 1e-6f));
+    return t * t * (3.0f - 2.0f * t);
+}
+
+__DEVICE__ float easeCurve(float x, int mode)
+{
+    x = _saturatef(x);
+    if (mode == EASE_SMOOTH)   return x * x * (3.0f - 2.0f * x);
+    if (mode == EASE_SMOOTHER) return x * x * x * (x * (x * 6.0f - 15.0f) + 10.0f);
+    if (mode == EASE_PUNCH)    { float i = 1.0f - x; return 1.0f - i * i * i * i; }
+    return x;
+}
+
+// Bilinear sample of one plane with edge clamping (pixel-centre coordinates).
+__DEVICE__ float bilin(__TEXTURE__ tex, float x, float y, int W, int H)
+{
+    x = _clampf(x - 0.5f, 0.0f, (float)(W - 1));
+    y = _clampf(y - 0.5f, 0.0f, (float)(H - 1));
+    float fx0 = _floorf(x), fy0 = _floorf(y);
+    int x0 = (int)fx0, y0 = (int)fy0;
+    int x1 = min(x0 + 1, W - 1), y1 = min(y0 + 1, H - 1);
+    float fx = x - fx0, fy = y - fy0;
+    float a = _tex2D(tex, x0, y0), b = _tex2D(tex, x1, y0);
+    float c = _tex2D(tex, x0, y1), d = _tex2D(tex, x1, y1);
+    return (a + (b - a) * fx) + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fy;
+}
+
+__DEVICE__ float4 sample4(__TEXTURE__ tr, __TEXTURE__ tg, __TEXTURE__ tb, __TEXTURE__ ta, float x, float y, int W, int H)
+{
+    return make_float4(bilin(tr, x, y, W, H), bilin(tg, x, y, W, H), bilin(tb, x, y, W, H), bilin(ta, x, y, W, H));
+}
+
+// Signed distance (pixels) to the loupe edge; negative inside. (lx, ly) are loupe-local pixel coordinates.
+__DEVICE__ float loupeSDF(float lx, float ly, int shp, float rad, float hw, float hh, float rr)
+{
+    if (shp == SHAPE_CIRCLE) return _sqrtf(lx * lx + ly * ly) - rad;
+    float qx = _fabs(lx) - hw + rr;
+    float qy = _fabs(ly) - hh + rr;
+    float ox = _fmaxf(qx, 0.0f), oy = _fmaxf(qy, 0.0f);
+    return _sqrtf(ox * ox + oy * oy) + _fminf(_fmaxf(qx, qy), 0.0f) - rr;
+}
+
+__DEVICE__ float4 transform(int p_Width, int p_Height, int p_X, int p_Y, __TEXTURE__ p_TexR, __TEXTURE__ p_TexG, __TEXTURE__ p_TexB, __TEXTURE__ p_TexA)
+{
+    const int W = p_Width, H = p_Height;
+    const float fW = (float)W, fH = (float)H;
+    const float ox = (float)p_X + 0.5f;           // output pixel centre, y down
+    const float oy = (float)p_Y + 0.5f;
+
+    const float P = easeCurve(progress, ease);
+    float4 src = make_float4(_tex2D(p_TexR, p_X, p_Y), _tex2D(p_TexG, p_X, p_Y), _tex2D(p_TexB, p_X, p_Y), _tex2D(p_TexA, p_X, p_Y));
+    if (P <= 0.0f) return src;                     // inactive: pass-through, essentially free
+
+    const float S  = 1.0f + (zoom - 1.0f) * P;     // current magnification
+    const float Tx = targetX * fW;                 // target in pixels (y down)
+    const float Ty = (1.0f - targetY) * fH;
+    const float ang = -rotation * P * 3.14159265f / 180.0f;
+    const float ca = _cosf(ang), sa = _sinf(ang);
+    const float sk = skew * P;
+
+    // ---------------- Full-frame zoom --------------------------------------------------------
+    if (shape == SHAPE_FULL)
+    {
+        float dx = 0.0f, dy = 0.0f;
+        if (panToCenter == 1)
+        {
+            // pan target toward centre, clamped so the zoomed plate always covers the frame
+            dx = _clampf((fW * 0.5f - Tx) * P, -(fW - Tx) * (S - 1.0f), Tx * (S - 1.0f));
+            dy = _clampf((fH * 0.5f - Ty) * P, -(fH - Ty) * (S - 1.0f), Ty * (S - 1.0f));
+        }
+        float rx = ox - Tx - dx, ry = oy - Ty - dy;
+        float qx = rx * ca - ry * sa, qy = rx * sa + ry * ca;
+        qx += sk * qy;
+        float cover = 1.0f + _fabs(sk) * fH / fW + _fabs(sa) * 0.6f;   // overscan for skew / rotation
+        float sx = Tx + qx / (S * cover), sy = Ty + qy / (S * cover);
+        float4 c = sample4(p_TexR, p_TexG, p_TexB, p_TexA, sx, sy, W, H);
+        if (sharpen > 0.0f)
+        {
+            float e = 1.0f;
+            float4 n1 = sample4(p_TexR, p_TexG, p_TexB, p_TexA, sx + e, sy, W, H);
+            float4 n2 = sample4(p_TexR, p_TexG, p_TexB, p_TexA, sx - e, sy, W, H);
+            float4 n3 = sample4(p_TexR, p_TexG, p_TexB, p_TexA, sx, sy + e, W, H);
+            float4 n4 = sample4(p_TexR, p_TexG, p_TexB, p_TexA, sx, sy - e, W, H);
+            float k = sharpen * P;
+            c.x += k * (c.x - 0.25f * (n1.x + n2.x + n3.x + n4.x));
+            c.y += k * (c.y - 0.25f * (n1.y + n2.y + n3.y + n4.y));
+            c.z += k * (c.z - 0.25f * (n1.z + n2.z + n3.z + n4.z));
+        }
+        return c;
+    }
+
+    // ---------------- Loupe (circle / rectangle) ----------------------------------------------
+    float growK = (loupeAnim == ANIM_GROW) ? P : 1.0f;
+    float fadeK = (loupeAnim == ANIM_FADE) ? P : 1.0f;
+    float rad = 0.5f * loupeSize * fW * growK;
+    float hw  = 0.5f * loupeSize * fW * growK;
+    float hh  = 0.5f * rectHeight * fH * growK;
+    float rr  = roundness * _fminf(hw, hh);
+    float la  = -loupeAngle * 3.14159265f / 180.0f;
+    float lca = _cosf(la), lsa = _sinf(la);
+    float aa  = _fmaxf(softness * fW, 0.75f);
+
+    float rx = ox - Tx, ry = oy - Ty;
+    float lx = rx * lca - ry * lsa, ly = rx * lsa + ry * lca;
+    float d  = loupeSDF(lx, ly, shape, rad, hw, hh, rr);
+
+    // Background (outside the loupe) ----------------------------------------------------------
+    float4 bg = src;
+    float bsk = bgSkew * P;
+    if (bsk != 0.0f)
+    {
+        float cover = 1.0f + _fabs(bsk) * fH / fW;
+        float bx = fW * 0.5f + ((ox - fW * 0.5f) + bsk * (oy - fH * 0.5f)) / cover;
+        float by = fH * 0.5f + (oy - fH * 0.5f) / cover;
+        bg = sample4(p_TexR, p_TexG, p_TexB, p_TexA, bx, by, W, H);
+    }
+    if (blurOn == 1 && blurAmt > 0.0f && d > -aa)
+    {
+        float r = blurAmt * P * 0.02f * fW;
+        float4 acc = bg; float n = 1.0f;
+        for (int i = 0; i < 16; i++)
+        {
+            float a = (float)i * 2.39996323f;              // golden-angle spiral
+            float rr2 = r * _sqrtf(((float)i + 0.5f) / 16.0f);
+            float4 s = sample4(p_TexR, p_TexG, p_TexB, p_TexA, ox + rr2 * _cosf(a), oy + rr2 * _sinf(a), W, H);
+            acc.x += s.x; acc.y += s.y; acc.z += s.z; acc.w += s.w; n += 1.0f;
+        }
+        bg = make_float4(acc.x / n, acc.y / n, acc.z / n, acc.w / n);
+    }
+    if (desatOn == 1)
+    {
+        float l = 0.2126f * bg.x + 0.7152f * bg.y + 0.0722f * bg.z;
+        float k = desatAmt * P;
+        bg.x += (l - bg.x) * k; bg.y += (l - bg.y) * k; bg.z += (l - bg.z) * k;
+    }
+    if (darkenOn == 1)
+    {
+        float g = 1.0f - darkenAmt * P;
+        bg.x *= g; bg.y *= g; bg.z *= g;
+    }
+    if (grainOn == 1)
+    {
+        uint seed = (uint)(p_X * 1973 + p_Y * 9277 + TIMELINE_FRAME_INDEX * 26699 + 7);
+        float n = (RAND(seed) - 0.5f) * grainAmt * P;
+        bg.x += n; bg.y += n; bg.z += n;
+    }
+    if (glassOn == 1 && outerShadow > 0.0f)
+    {
+        float sa2 = shadowAngle * 3.14159265f / 180.0f;
+        float sdx = shadowDistance * fW * _cosf(sa2), sdy = -shadowDistance * fW * _sinf(sa2);
+        float sx2 = rx - sdx, sy2 = ry - sdy;
+        float slx = sx2 * lca - sy2 * lsa, sly = sx2 * lsa + sy2 * lca;
+        float ds = loupeSDF(slx, sly, shape, rad, hw, hh, rr);
+        float ssoft = _fmaxf(shadowSoft * fW, 1.0f);
+        float sh = (1.0f - smooth01(-ssoft, ssoft, ds)) * outerShadow * P;
+        bg.x *= 1.0f - sh; bg.y *= 1.0f - sh; bg.z *= 1.0f - sh;
+    }
+
+    // Loupe content --------------------------------------------------------------------------
+    float m = (1.0f - smooth01(-aa, aa, d)) * fadeK;
+    if (m <= 0.0f) return bg;
+
+    float qx = rx * ca - ry * sa, qy = rx * sa + ry * ca;
+    qx += sk * qy;
+    float magn = S;
+    if (glassOn == 1 && glassDistortion > 0.0f)
+    {
+        float rn;
+        if (shape == SHAPE_CIRCLE) rn = _sqrtf(lx * lx + ly * ly) / _fmaxf(rad, 1.0f);
+        else rn = _fmaxf(_fabs(lx) / _fmaxf(hw, 1.0f), _fabs(ly) / _fmaxf(hh, 1.0f));
+        rn = _saturatef(rn);
+        magn = S * (1.0f + glassDistortion * 0.35f * P * (1.0f - rn * rn));   // stronger at the centre, like a lens
+    }
+    float sx = Tx + qx / magn, sy = Ty + qy / magn;
+    float4 c = sample4(p_TexR, p_TexG, p_TexB, p_TexA, sx, sy, W, H);
+    if (sharpen > 0.0f)
+    {
+        float4 n1 = sample4(p_TexR, p_TexG, p_TexB, p_TexA, sx + 1.0f, sy, W, H);
+        float4 n2 = sample4(p_TexR, p_TexG, p_TexB, p_TexA, sx - 1.0f, sy, W, H);
+        float4 n3 = sample4(p_TexR, p_TexG, p_TexB, p_TexA, sx, sy + 1.0f, W, H);
+        float4 n4 = sample4(p_TexR, p_TexG, p_TexB, p_TexA, sx, sy - 1.0f, W, H);
+        float k = sharpen * P;
+        c.x += k * (c.x - 0.25f * (n1.x + n2.x + n3.x + n4.x));
+        c.y += k * (c.y - 0.25f * (n1.y + n2.y + n3.y + n4.y));
+        c.z += k * (c.z - 0.25f * (n1.z + n2.z + n3.z + n4.z));
+    }
+    if (glassOn == 1)
+    {
+        float gb = 1.0f + glassBrightness * 0.5f * P;
+        float iw = _fmaxf(0.06f * _fminf(rad, _fminf(hw, hh)), 2.0f);
+        float inner = innerShadow * P * (1.0f - smooth01(0.0f, iw, -d));
+        float k = gb * (1.0f - inner);
+        c.x *= k; c.y *= k; c.z *= k;
+    }
+
+    float4 o = make_float4(bg.x + (c.x - bg.x) * m, bg.y + (c.y - bg.y) * m, bg.z + (c.z - bg.z) * m, bg.w + (c.w - bg.w) * m);
+
+    // Outline: a band just inside the edge ---------------------------------------------------
+    if (outlineOn == 1 && borderWidth > 0.0f)
+    {
+        float bw = _fmaxf(borderWidth * fW, 1.0f);
+        float band = 1.0f - smooth01(bw * 0.5f - aa, bw * 0.5f + aa, _fabs(d + bw * 0.5f));
+        float k = band * fadeK;
+        o.x += (borderR - o.x) * k; o.y += (borderG - o.y) * k; o.z += (borderB - o.z) * k;
+        o.w += (1.0f - o.w) * k;
+    }
+    return o;
+}
